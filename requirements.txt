@@ -1,0 +1,20 @@
+SpeechRecognition
+vosk
+pyaudio
+python-dotenv
+scipy
+ane_transformers
+openai-whisper
+coremltools
+coremltools
+# pyannote.audio
+torch
+speechbrain
+flask
+langchain
+langchain-openai
+requests
+kaldi_native_fbank
+omegaconf
+onnxruntime
+librosa

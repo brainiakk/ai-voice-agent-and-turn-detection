@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>voice agent</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d0e;
+    --panel: #101314;
+    --line: #2a2f31;
+    --fg: #d9dcdc;
+    --dim: #6b7477;
+    --accent: #39ff9c;
+    --user: #4da6ff;
+    --red: #ff3b3b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 {
+    font-size: 14px;
+    letter-spacing: 0.2em;
+    margin: 0;
+    color: var(--fg);
+    font-weight: 600;
+  }
+  #status {
+    font-size: 12px;
+    color: var(--dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #status .dot {
+    width: 8px; height: 8px;
+    background: var(--dim);
+    display: inline-block;
+  }
+  #status.idle .dot { background: var(--dim); }
+  #status.listening .dot { background: var(--accent); }
+  #status.thinking .dot { background: #ffcc4d; }
+
+  #turnPanel {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .turn-badges {
+    display: flex;
+    gap: 10px;
+  }
+  .turn-badge {
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    opacity: 0.4;
+    transition: opacity 0.15s, border-color 0.15s;
+  }
+  .turn-badge.primary {
+    opacity: 1;
+    border-color: var(--fg);
+  }
+  .turn-badge.disabled {
+    opacity: 0.2;
+  }
+  .turn-name {
+    color: var(--dim);
+    letter-spacing: 0.04em;
+  }
+  .turn-pred {
+    font-weight: 600;
+    color: var(--fg);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .turn-pred.complete { color: var(--accent); }
+  .turn-pred.incomplete { color: #ffcc4d; }
+  .turn-pred.invalid { color: var(--red); }
+  .turn-prob {
+    color: var(--dim);
+    font-size: 11px;
+  }
+  .turn-toggles {
+    display: flex;
+    gap: 16px;
+  }
+  .toggle-row.small {
+    font-size: 11px;
+  }
+
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .bubble {
+    border: 1px solid var(--line);
+    padding: 10px 14px;
+    max-width: 80%;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    border-color: var(--user);
+    color: var(--user);
+  }
+  .bubble.user.pending {
+    border-style: dashed;
+    color: var(--dim);
+    font-style: italic;
+  }
+  .bubble.assistant {
+    align-self: flex-start;
+    border-color: var(--accent);
+    color: var(--fg);
+  }
+  .bubble.assistant::after {
+    content: "";
+  }
+  .sys {
+    align-self: center;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 22px 20px 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  #micBtn {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    border: 2px solid var(--red);
+    background: var(--red);
+    cursor: pointer;
+    position: relative;
+    outline: none;
+  }
+  #micBtn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--red);
+    opacity: 0;
+  }
+  #micBtn.recording {
+    background: #ff6b6b;
+  }
+  #micBtn.listening {
+    animation: pulse 1.4s infinite;
+  }
+  #micBtn.always-mode:not(.listening) {
+    background: #5a1f1f;
+    border-color: #5a1f1f;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.5); }
+    70%  { box-shadow: 0 0 0 16px rgba(255, 59, 59, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0); }
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: 0.04em;
+    user-select: none;
+  }
+  .toggle-row input { display: none; }
+  .toggle-track {
+    width: 40px;
+    height: 20px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 16px; height: 16px;
+    background: var(--dim);
+    transition: left 0.15s, background 0.15s;
+  }
+  .toggle-row input:checked + .toggle-track .toggle-thumb {
+    left: 20px;
+    background: var(--accent);
+  }
+  .toggle-row input:checked + .toggle-track {
+    border-color: var(--accent);
+  }
+  .toggle-label.on { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>VOICE AGENT</h1>
+    <div id="status" class="idle"><span class="dot"></span><span id="statusText">idle</span></div>
+  </header>
+
+  <div id="turnPanel">
+    <div class="turn-badges">
+      <div class="turn-badge" id="badgeSmartturn">
+        <span class="turn-name">SmartTurn</span>
+        <span class="turn-pred" id="predSmartturn">—</span>
+        <span class="turn-prob" id="probSmartturn"></span>
+      </div>
+      <div class="turn-badge" id="badgeTurnsense">
+        <span class="turn-name">TurnSense</span>
+        <span class="turn-pred" id="predTurnsense">—</span>
+        <span class="turn-prob" id="probTurnsense"></span>
+      </div>
+    </div>
+    <div class="turn-toggles">
+      <label class="toggle-row small">
+        <input type="checkbox" id="onlyPrimaryToggle" checked>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span class="toggle-label" id="onlyPrimaryLabel">Use Only Primary</span>
+      </label>
+      <label class="toggle-row small">
+        <input type="checkbox" id="primaryModelToggle">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span class="toggle-label" id="primaryModelLabel">Primary: SmartTurn</span>
+      </label>
+    </div>
+  </div>
+
+  <div id="chat"></div>
+
+  <footer>
+    <button id="micBtn" aria-label="Push to talk"></button>
+    <label class="toggle-row">
+      <input type="checkbox" id="alwaysListenToggle">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      <span class="toggle-label" id="toggleLabel">Always Listening</span>
+    </label>
+  </footer>
+
+<script>
+const chat = document.getElementById('chat');
+const micBtn = document.getElementById('micBtn');
+const alwaysToggle = document.getElementById('alwaysListenToggle');
+const toggleLabel = document.getElementById('toggleLabel');
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+
+function setStatus(s) {
+  statusEl.className = s;
+  statusText.textContent = s;
+}
+
+// --- turn-detection comparison panel ---
+const onlyPrimaryToggle = document.getElementById('onlyPrimaryToggle');
+const primaryModelToggle = document.getElementById('primaryModelToggle');
+const primaryModelLabel = document.getElementById('primaryModelLabel');
+const badgeSmartturn = document.getElementById('badgeSmartturn');
+const badgeTurnsense = document.getElementById('badgeTurnsense');
+
+function currentPrimary() { return primaryModelToggle.checked ? 'turnsense' : 'smartturn'; }
+
+function updateTurnUI() {
+  const onlyPrimary = onlyPrimaryToggle.checked;
+  const primary = currentPrimary();
+  primaryModelLabel.textContent = 'Primary: ' + (primary === 'smartturn' ? 'SmartTurn' : 'TurnSense');
+  badgeSmartturn.classList.toggle('primary', primary === 'smartturn');
+  badgeTurnsense.classList.toggle('primary', primary === 'turnsense');
+  badgeSmartturn.classList.toggle('disabled', onlyPrimary && primary !== 'smartturn');
+  badgeTurnsense.classList.toggle('disabled', onlyPrimary && primary !== 'turnsense');
+}
+
+function pushTurnConfig() {
+  fetch('/api/turn-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ primary: currentPrimary(), only_primary: onlyPrimaryToggle.checked }),
+  });
+}
+
+function renderTurnStatus(model, pred) {
+  const predEl = document.getElementById(model === 'smartturn' ? 'predSmartturn' : 'predTurnsense');
+  const probEl = document.getElementById(model === 'smartturn' ? 'probSmartturn' : 'probTurnsense');
+  predEl.textContent = pred.prediction;
+  predEl.className = 'turn-pred ' + pred.prediction;
+  probEl.textContent = (pred.probability * 100).toFixed(1) + '%';
+}
+
+onlyPrimaryToggle.addEventListener('change', () => { updateTurnUI(); pushTurnConfig(); });
+primaryModelToggle.addEventListener('change', () => { updateTurnUI(); pushTurnConfig(); });
+updateTurnUI();
+
+function addBubble(role, text) {
+  const el = document.createElement('div');
+  el.className = 'bubble ' + role;
+  el.textContent = text;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+  return el;
+}
+
+function addSystemLine(text) {
+  const el = document.createElement('div');
+  el.className = 'sys';
+  el.textContent = text;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// --- typewriter reveal, decoupled from network chunk sizes ---
+const typeQueue = [];
+let typing = false;
+function typeTick() {
+  if (typeQueue.length === 0) { typing = false; return; }
+  typing = true;
+  const { el, ch } = typeQueue.shift();
+  el.textContent += ch;
+  chat.scrollTop = chat.scrollHeight;
+  setTimeout(typeTick, 14);
+}
+function enqueueType(el, text) {
+  for (const ch of text) typeQueue.push({ el, ch });
+  if (!typing) typeTick();
+}
+
+// --- spoken audio playback, queued in order, interruptible on barge-in ---
+// Each sentence starts fetching/decoding the moment its SSE event arrives, so by
+// the time the previous sentence finishes playing, the next one is already sitting
+// in memory as a blob URL and starts instantly - back-to-back with no network gap.
+const audioQueue = [];
+let currentAudioEl = null;
+
+function stopAllAudio() {
+  audioQueue.length = 0;
+  if (currentAudioEl) {
+    currentAudioEl.pause();
+    currentAudioEl.src = '';
+    currentAudioEl = null;
+  }
+}
+
+async function playNextAudio() {
+  if (currentAudioEl || audioQueue.length === 0) return;
+  const entry = audioQueue.shift();
+  const blobUrl = await entry.blobUrlPromise;
+  if (!blobUrl) { playNextAudio(); return; } // fetch failed, skip to next
+
+  const el = new Audio(blobUrl);
+  currentAudioEl = el;
+  const advance = () => {
+    URL.revokeObjectURL(blobUrl);
+    if (currentAudioEl === el) currentAudioEl = null;
+    playNextAudio();
+  };
+  el.addEventListener('ended', advance);
+  el.addEventListener('error', advance);
+  el.play().catch(advance);
+}
+
+function enqueueAudio(id) {
+  const blobUrlPromise = fetch('/api/tts/' + id)
+    .then(r => r.blob())
+    .then(b => URL.createObjectURL(b))
+    .catch(() => null);
+  audioQueue.push({ id, blobUrlPromise });
+  playNextAudio();
+}
+
+// --- SSE ---
+let latestGen = 0;
+let userBubble = null;
+let assistantBubble = null;
+
+// True while userBubble represents a message that hasn't been fully answered
+// yet (including one that got interrupted and re-sent with appended text).
+// Keeps a cancel+merge continuation growing the SAME bubble in place instead
+// of popping a second, mostly-duplicate bubble below it.
+let turnOpen = false;
+
+// Placeholder bubble shown where the next user message will land, while
+// turn-detection is still deciding whether you're done talking. Suppressed
+// while turnOpen, since there's already a real bubble on screen for that.
+let pendingUserBubble = null;
+
+const es = new EventSource('/api/stream');
+es.onmessage = (e) => {
+  const ev = JSON.parse(e.data);
+
+  if (ev.type === 'turn_status') {
+    // Not tied to an agent generation - updates independently, in real time.
+    if (ev.predictions.smartturn) renderTurnStatus('smartturn', ev.predictions.smartturn);
+    if (ev.predictions.turnsense) renderTurnStatus('turnsense', ev.predictions.turnsense);
+
+    if (!turnOpen) {
+      const primaryPred = ev.predictions[currentPrimary()];
+      if (primaryPred) {
+        if (!pendingUserBubble) pendingUserBubble = addBubble('user pending', '');
+        const isComplete = primaryPred.prediction === 'complete' && primaryPred.probability > 0.6;
+        pendingUserBubble.textContent = isComplete
+          ? 'Turn complete, waiting for transcript...'
+          : 'Waiting for your turn to end...';
+      }
+    }
+    return;
+  }
+
+  if (ev.gen < latestGen) return; // stale turn, ignore
+  if (ev.gen > latestGen) {
+    latestGen = ev.gen;
+    assistantBubble = null;
+    stopAllAudio(); // new turn supersedes whatever was being spoken
+  }
+
+  switch (ev.type) {
+    case 'transcript':
+      if (pendingUserBubble) {
+        // Swap the placeholder in place for the real message, in real time.
+        userBubble = pendingUserBubble;
+        userBubble.className = 'bubble user';
+        pendingUserBubble = null;
+      } else if (!userBubble || !turnOpen) {
+        userBubble = addBubble('user', '');
+      }
+      // else: this is an appended/merged continuation - update the same
+      // bubble instead of adding a near-duplicate one underneath it.
+      turnOpen = true;
+      userBubble.textContent = ev.text;
+      setStatus('thinking');
+      break;
+    case 'tool':
+      addSystemLine('→ using tool: ' + ev.name);
+      break;
+    case 'token':
+      if (!assistantBubble) assistantBubble = addBubble('assistant', '');
+      enqueueType(assistantBubble, ev.text);
+      break;
+    case 'audio':
+      enqueueAudio(ev.id);
+      break;
+    case 'cancelled':
+      // Left open on purpose: the next transcript is an appended continuation
+      // of this same message, not a new one.
+      stopAllAudio();
+      addSystemLine('✕ interrupted, merging new input...');
+      break;
+    case 'done':
+      turnOpen = false;
+      setStatus(alwaysToggle.checked ? 'listening' : 'idle');
+      break;
+    case 'error':
+      turnOpen = false;
+      addSystemLine('⚠ ' + ev.text);
+      setStatus(alwaysToggle.checked ? 'listening' : 'idle');
+      break;
+  }
+};
+
+// --- always-listening toggle ---
+alwaysToggle.addEventListener('change', async () => {
+  const on = alwaysToggle.checked;
+  micBtn.classList.toggle('always-mode', on);
+  toggleLabel.classList.toggle('on', on);
+  if (on) {
+    await fetch('/api/listen/start', { method: 'POST' });
+    micBtn.classList.add('listening');
+    setStatus('listening');
+  } else {
+    await fetch('/api/listen/stop', { method: 'POST' });
+    micBtn.classList.remove('listening');
+    setStatus('idle');
+  }
+});
+
+// --- push-to-talk recording (raw WAV via WebAudio, no server-side ffmpeg needed) ---
+let audioCtx, mediaStream, processor, recordedChunks, recording = false;
+
+async function beginRecord() {
+  if (alwaysToggle.checked || recording) return;
+  recording = true;
+  micBtn.classList.add('recording');
+  recordedChunks = [];
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(mediaStream);
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (e) => {
+    recordedChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+}
+
+async function endRecord() {
+  if (alwaysToggle.checked || !recording) return;
+  recording = false;
+  micBtn.classList.remove('recording');
+  processor.disconnect();
+  mediaStream.getTracks().forEach(t => t.stop());
+  const sampleRate = audioCtx.sampleRate;
+  await audioCtx.close();
+
+  const wavBlob = encodeWav(recordedChunks, sampleRate);
+  const fd = new FormData();
+  fd.append('audio', wavBlob, 'clip.wav');
+  setStatus('thinking');
+  await fetch('/api/record', { method: 'POST', body: fd });
+}
+
+function encodeWav(chunks, sampleRate) {
+  const length = chunks.reduce((a, c) => a + c.length, 0);
+  const merged = new Float32Array(length);
+  let offset = 0;
+  for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+
+  const pcm16 = new Int16Array(merged.length);
+  for (let i = 0; i < merged.length; i++) {
+    const s = Math.max(-1, Math.min(1, merged[i]));
+    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+
+  const buf = new ArrayBuffer(44 + pcm16.length * 2);
+  const view = new DataView(buf);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + pcm16.length * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, pcm16.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < pcm16.length; i++, o += 2) view.setInt16(o, pcm16[i], true);
+
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+micBtn.addEventListener('mousedown', beginRecord);
+micBtn.addEventListener('mouseup', endRecord);
+micBtn.addEventListener('mouseleave', () => { if (recording) endRecord(); });
+micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); beginRecord(); });
+micBtn.addEventListener('touchend', (e) => { e.preventDefault(); endRecord(); });
+</script>
+</body>
+</html>
